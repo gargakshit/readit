@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_icons/flutter_icons.dart';
 import 'package:http/http.dart';
 import 'package:objectdb/objectdb.dart';
@@ -8,6 +9,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:readit/models/article.dart';
 import 'package:readit/utils/getTextColor.dart';
 import 'package:readit/widgets/card.dart';
+import 'package:readit/widgets/shimmerCard.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:validators/validators.dart';
 
 class HomePage extends StatefulWidget {
@@ -34,7 +37,11 @@ class _HomePageState extends State<HomePage> {
         (await getApplicationDocumentsDirectory()).path + "/articles__01.db");
     db.open();
 
-    data = (await db.find({})).map((e) => ArticleModel.fromJson(e)).toList();
+    data = (await db.find({}))
+        .map((e) => ArticleModel.fromJson(e))
+        .toList()
+        .reversed
+        .toList();
 
     setState(() {
       showLoading = false;
@@ -48,25 +55,44 @@ class _HomePageState extends State<HomePage> {
 
     setState(() {
       showLoading = true;
+      showError = false;
     });
 
     if (isURL(text)) {
-      final db = ObjectDB(
-          (await getApplicationDocumentsDirectory()).path + "/articles__01.db");
+      var path =
+          (await getApplicationDocumentsDirectory()).path + "/articles__01.db";
+      final db = ObjectDB(path);
       db.open();
 
-      final res = await get(
-          "https://us-central1-technews-251304.cloudfunctions.net/article-parser?url=$text");
+      if ((await db.find(
+            {"message": "Extracted article from \"$text\""},
+          ))
+              .length ==
+          0) {
+        final res = await get(
+            "https://us-central1-technews-251304.cloudfunctions.net/article-parser?url=$text");
 
-      if (res.statusCode == 200) {
-        print(res.body);
-        db.insert(jsonDecode(res.body));
+        if (res.statusCode == 200) {
+          var body = jsonDecode(res.body);
+          if (body['error'] == 0) {
+            db.insert(body);
+          } else {
+            setState(() {
+              showLoading = false;
+              showError = true;
+            });
+          }
 
-        getSavedArticles();
+          getSavedArticles();
+        } else {
+          setState(() {
+            showLoading = false;
+            showError = true;
+          });
+        }
       } else {
         setState(() {
           showLoading = false;
-          showError = true;
         });
       }
 
@@ -159,15 +185,24 @@ class _HomePageState extends State<HomePage> {
                             ),
                             actions: <Widget>[
                               FlatButton(
-                                child: Text("Add"),
-                                onPressed: () {
-                                  addArticle(context);
-                                  Navigator.of(context).pop();
+                                child: Text("Paste"),
+                                onPressed: () async {
+                                  ClipboardData d =
+                                      await Clipboard.getData("text/plain");
+                                  _textEditingController.text = d.text;
                                 },
                               ),
                               FlatButton(
                                 child: Text("Cancel"),
                                 onPressed: () {
+                                  Navigator.of(context).pop();
+                                  _textEditingController.text = "";
+                                },
+                              ),
+                              FlatButton(
+                                child: Text("Add"),
+                                onPressed: () {
+                                  addArticle(context);
                                   Navigator.of(context).pop();
                                 },
                               ),
@@ -182,8 +217,9 @@ class _HomePageState extends State<HomePage> {
               SizedBox(height: 16),
               Expanded(
                 child: data.length == 0
-                    ? !showLoading
-                        ? Center(
+                    ? showLoading
+                        ? Container()
+                        : Center(
                             child: Text(
                               "Please add a new article first!",
                               style: TextStyle(
@@ -194,15 +230,40 @@ class _HomePageState extends State<HomePage> {
                               ),
                             ),
                           )
-                        : Container()
-                    : ListView(
-                        children: data
-                            .map(
-                              (e) => CardComponent(
-                                article: e,
+                    : ListView.builder(
+                        itemCount: data.length + 1,
+                        itemBuilder: (context, index) => index == 0
+                            ? showLoading
+                                ? Shimmer.fromColors(
+                                    baseColor: Colors.grey[400],
+                                    highlightColor: Colors.white,
+                                    child: ShimmerCard(),
+                                  )
+                                : Container()
+                            : Dismissible(
+                                key: Key(data[index - 1].data.url),
+                                onDismissed: (direction) async {
+                                  var path =
+                                      (await getApplicationDocumentsDirectory())
+                                              .path +
+                                          "/articles__01.db";
+                                  final db = ObjectDB(path);
+                                  db.open();
+
+                                  await db.remove(
+                                    {
+                                      "message": data[index - 1].message,
+                                    },
+                                  );
+
+                                  getSavedArticles();
+
+                                  await db.close();
+                                },
+                                child: CardComponent(
+                                  article: data[index - 1],
+                                ),
                               ),
-                            )
-                            .toList(),
                       ),
               ),
             ],

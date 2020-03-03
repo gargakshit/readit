@@ -4,6 +4,7 @@ import 'package:flutter_icons/flutter_icons.dart';
 import 'package:readit/models/article.dart';
 import 'package:readit/pages/article.dart';
 import 'package:readit/utils/getTextColor.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:uuid/uuid.dart';
 
 class CardComponent extends StatefulWidget {
@@ -62,8 +63,14 @@ class _CardComponentState extends State<CardComponent> {
                     height: 90,
                     child: CachedNetworkImage(
                       imageUrl: widget.article.data.image,
-                      placeholder: (context, url) => Center(
-                        child: CircularProgressIndicator(),
+                      placeholder: (context, url) => Shimmer.fromColors(
+                        child: Container(
+                          width: 120,
+                          height: 90,
+                          color: Colors.black,
+                        ),
+                        baseColor: Colors.grey[400],
+                        highlightColor: Colors.white,
                       ),
                       errorWidget: (context, url, error) =>
                           Icon(Feather.x_circle),
@@ -80,6 +87,8 @@ class _CardComponentState extends State<CardComponent> {
                 children: <Widget>[
                   Text(
                     widget.article.data.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: getTextColor(
                         MediaQuery.of(context).platformBrightness,
