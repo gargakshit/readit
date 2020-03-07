@@ -2,12 +2,14 @@ class ArticleModel {
   int error;
   String message;
   Data data;
+  String logo;
 
-  ArticleModel({this.error, this.message, this.data});
+  ArticleModel({this.error, this.message, this.data, this.logo});
 
   ArticleModel.fromJson(Map<String, dynamic> json) {
     error = json['error'];
     message = json['message'];
+    logo = json['logo'];
     data = json['data'] != null ? new Data.fromJson(json['data']) : null;
   }
 
@@ -15,6 +17,7 @@ class ArticleModel {
     final Map<String, dynamic> data = new Map<String, dynamic>();
     data['error'] = this.error;
     data['message'] = this.message;
+    data['logo'] = this.logo;
     if (this.data != null) {
       data['data'] = this.data.toJson();
     }

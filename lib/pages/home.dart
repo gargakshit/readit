@@ -1,275 +1,225 @@
-import 'dart:convert';
-
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_icons/flutter_icons.dart';
-import 'package:http/http.dart';
-import 'package:objectdb/objectdb.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:readit/models/article.dart';
-import 'package:readit/utils/getTextColor.dart';
-import 'package:readit/widgets/card.dart';
-import 'package:readit/widgets/shimmerCard.dart';
+import 'package:flutter_mobx/flutter_mobx.dart';
+import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
+import 'package:readit/pages/article.dart';
+import 'package:readit/stores/articleStore.dart';
+import 'package:share/share.dart';
 import 'package:shimmer/shimmer.dart';
-import 'package:validators/validators.dart';
+import 'package:uuid/uuid.dart';
 
-class HomePage extends StatefulWidget {
-  @override
-  _HomePageState createState() => _HomePageState();
-}
-
-class _HomePageState extends State<HomePage> {
-  TextEditingController _textEditingController = TextEditingController();
-  List<ArticleModel> data = [];
-
-  bool showLoading = true;
-  bool showError = false;
-
-  @override
-  void initState() {
-    super.initState();
-
-    getSavedArticles();
-  }
-
-  getSavedArticles() async {
-    final db = ObjectDB(
-        (await getApplicationDocumentsDirectory()).path + "/articles__01.db");
-    db.open();
-
-    data = (await db.find({}))
-        .map((e) => ArticleModel.fromJson(e))
-        .toList()
-        .reversed
-        .toList();
-
-    setState(() {
-      showLoading = false;
-    });
-    await db.close();
-  }
-
-  addArticle(BuildContext context) async {
-    final text = _textEditingController.text;
-    _textEditingController.text = "";
-
-    setState(() {
-      showLoading = true;
-      showError = false;
-    });
-
-    if (isURL(text)) {
-      var path =
-          (await getApplicationDocumentsDirectory()).path + "/articles__01.db";
-      final db = ObjectDB(path);
-      db.open();
-
-      if ((await db.find(
-            {"message": "Extracted article from \"$text\""},
-          ))
-              .length ==
-          0) {
-        final res = await get(
-            "https://us-central1-technews-251304.cloudfunctions.net/article-parser?url=$text");
-
-        if (res.statusCode == 200) {
-          var body = jsonDecode(res.body);
-          if (body['error'] == 0) {
-            db.insert(body);
-          } else {
-            setState(() {
-              showLoading = false;
-              showError = true;
-            });
-          }
-
-          getSavedArticles();
-        } else {
-          setState(() {
-            showLoading = false;
-            showError = true;
-          });
-        }
-      } else {
-        setState(() {
-          showLoading = false;
-        });
-      }
-
-      await db.close();
-    } else {
-      setState(() {
-        showLoading = false;
-        showError = true;
-      });
-    }
-  }
-
+class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: 16.0,
-        ),
-        child: SafeArea(
-          child: Column(
-            children: <Widget>[
-              Padding(
-                padding: EdgeInsets.only(
-                  top: 32,
-                ),
-              ),
-              Row(
-                children: <Widget>[
-                  Text(
-                    "read",
+    var baseSize = (MediaQuery.of(context).size.height -
+        64 -
+        MediaQuery.of(context).padding.bottom);
+
+    ArticleStore articleStore = Provider.of<ArticleStore>(context);
+
+    return Observer(
+      builder: (c) {
+        return Container(
+          child: articleStore.data.length == 0
+              ? Center(
+                  child: Text(
+                    articleStore.loading
+                        ? "Adding..."
+                        : "Please add an article first!",
                     style: TextStyle(
-                      fontSize: 36.0,
-                      fontWeight: FontWeight.bold,
-                      color: getTextColor(
-                          MediaQuery.of(context).platformBrightness),
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xff212121),
+                      fontSize: 20,
                     ),
                   ),
-                  Text(
-                    "it.",
-                    style: TextStyle(
-                      fontSize: 36.0,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xffF25F5C),
-                    ),
-                  ),
-                  Expanded(
-                    child: Container(),
-                  ),
-                  showError ? Icon(Feather.alert_circle) : Container(),
-                  showLoading
-                      ? SizedBox(
-                          width: 28,
-                        )
-                      : Container(),
-                  showLoading
-                      ? SizedBox(
-                          child: CircularProgressIndicator(),
-                          width: 28,
-                          height: 28,
-                        )
-                      : Container(),
-                  SizedBox(
-                    width: 28,
-                  ),
-                  InkWell(
-                    child: GestureDetector(
-                      child: Icon(Feather.plus),
+                )
+              : PageView.builder(
+                  itemCount: articleStore.data.length,
+                  scrollDirection: Axis.vertical,
+                  physics: AlwaysScrollableScrollPhysics(),
+                  itemBuilder: (ctx, position) {
+                    var date = articleStore.data[position].data.published;
+                    var imgTag = Uuid().v4();
+
+                    return GestureDetector(
                       onTap: () {
-                        showDialog(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            title: Text(
-                              "Add a new article",
-                              style: TextStyle(
-                                color: getTextColor(
-                                    MediaQuery.of(context).platformBrightness),
-                              ),
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ArticleScreen(
+                              article: articleStore.data[position],
+                              imgTag: imgTag,
                             ),
-                            content: TextField(
-                              controller: _textEditingController,
-                              decoration: InputDecoration(
-                                hintText: "URL of the article...",
-                              ),
-                              style: TextStyle(
-                                color: getTextColor(
-                                  MediaQuery.of(context).platformBrightness,
-                                ),
-                              ),
-                            ),
-                            actions: <Widget>[
-                              FlatButton(
-                                child: Text("Paste"),
-                                onPressed: () async {
-                                  ClipboardData d =
-                                      await Clipboard.getData("text/plain");
-                                  _textEditingController.text = d.text;
-                                },
-                              ),
-                              FlatButton(
-                                child: Text("Cancel"),
-                                onPressed: () {
-                                  Navigator.of(context).pop();
-                                  _textEditingController.text = "";
-                                },
-                              ),
-                              FlatButton(
-                                child: Text("Add"),
-                                onPressed: () {
-                                  addArticle(context);
-                                  Navigator.of(context).pop();
-                                },
-                              ),
-                            ],
                           ),
                         );
                       },
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 16),
-              Expanded(
-                child: data.length == 0
-                    ? showLoading
-                        ? Container()
-                        : Center(
-                            child: Text(
-                              "Please add a new article first!",
-                              style: TextStyle(
-                                color: getTextColor(
-                                  MediaQuery.of(context).platformBrightness,
+                      child: Column(
+                        children: <Widget>[
+                          Hero(
+                            tag: imgTag,
+                            child: CachedNetworkImage(
+                              imageUrl: articleStore.data[position].data.image,
+                              width: MediaQuery.of(context).size.width,
+                              height: baseSize / 2.4,
+                              fit: BoxFit.cover,
+                              placeholder: (context, url) => Shimmer.fromColors(
+                                baseColor: Colors.grey[400],
+                                highlightColor: Colors.white,
+                                child: Container(
+                                  height: baseSize / 2.4,
+                                  color: Colors.black,
                                 ),
+                              ),
+                              errorWidget: (context, url, error) =>
+                                  Icon(Icons.error),
+                            ),
+                          ),
+                          Container(
+                            color: Colors.white,
+                            height: 48,
+                            padding: EdgeInsets.symmetric(horizontal: 16),
+                            child: Row(
+                              children: <Widget>[
+                                Text(
+                                  "${((articleStore.data[position].data.ttr) / 60).ceil()} min read",
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xff212121),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Container(),
+                                ),
+                                Text(
+                                  "${date != "" ? DateFormat('E, dd MMMM').format(DateTime.parse(date)) : ""}",
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xff212121).withOpacity(0.6),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          SizedBox(
+                            height: 24,
+                          ),
+                          Container(
+                            padding: EdgeInsets.symmetric(horizontal: 16),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: <Widget>[
+                                articleStore.data[position].logo == null
+                                    ? Text(
+                                        "via ${articleStore.data[position].data.source}",
+                                        style: TextStyle(
+                                          fontSize: 16.0,
+                                          fontWeight: FontWeight.w500,
+                                          color: Color(0xff212121)
+                                              .withOpacity(0.6),
+                                        ),
+                                      )
+                                    : Container(
+                                        height: 48,
+                                        width:
+                                            MediaQuery.of(context).size.width -
+                                                144,
+                                        alignment: Alignment.centerLeft,
+                                        child: CachedNetworkImage(
+                                          imageUrl:
+                                              articleStore.data[position].logo,
+                                          height: 48,
+                                        ),
+                                      ),
+                                Expanded(
+                                  child: Container(),
+                                ),
+                                IconButton(
+                                  icon: Icon(Feather.trash_2),
+                                  onPressed: () {
+                                    articleStore.deleteArticle(position);
+                                  },
+                                  color: Color(0xff212121).withOpacity(0.6),
+                                  iconSize: 24,
+                                ),
+                                IconButton(
+                                  icon: Icon(Ionicons.ios_share),
+                                  onPressed: () {
+                                    Share.share(
+                                      "${articleStore.data[position].data.title}\n\n${articleStore.data[position].data.url}\n\nShared using readit.",
+                                    );
+                                  },
+                                  color: Color(0xff212121).withOpacity(0.6),
+                                  iconSize: 24,
+                                ),
+                              ],
+                            ),
+                          ),
+                          Expanded(
+                            child: Container(),
+                          ),
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 16.0),
+                            child: Text(
+                              articleStore.data[position].data.title,
+                              style: TextStyle(
                                 fontSize: 18.0,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xff212121),
+                              ),
+                              textAlign: TextAlign.left,
+                            ),
+                          ),
+                          SizedBox(
+                            height: 16.0,
+                          ),
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 16.0),
+                            child: Text(
+                              articleStore.data[position].data.description,
+                              style: TextStyle(
+                                fontSize: 14.0,
+                                fontWeight: FontWeight.w500,
+                                color: Color(0xff212121).withOpacity(0.6),
                               ),
                             ),
-                          )
-                    : ListView.builder(
-                        itemCount: data.length + 1,
-                        itemBuilder: (context, index) => index == 0
-                            ? showLoading
-                                ? Shimmer.fromColors(
-                                    baseColor: Colors.grey[400],
-                                    highlightColor: Colors.white,
-                                    child: ShimmerCard(),
-                                  )
-                                : Container()
-                            : Dismissible(
-                                key: Key(data[index - 1].data.url),
-                                onDismissed: (direction) async {
-                                  var path =
-                                      (await getApplicationDocumentsDirectory())
-                                              .path +
-                                          "/articles__01.db";
-                                  final db = ObjectDB(path);
-                                  db.open();
-
-                                  await db.remove(
-                                    {
-                                      "message": data[index - 1].message,
-                                    },
-                                  );
-
-                                  getSavedArticles();
-
-                                  await db.close();
-                                },
-                                child: CardComponent(
-                                  article: data[index - 1],
+                          ),
+                          Expanded(
+                            child: Container(),
+                          ),
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 16.0),
+                            child: Row(
+                              children: <Widget>[
+                                Text(
+                                  "Read More",
+                                  style: TextStyle(
+                                    fontSize: 14.0,
+                                    fontWeight: FontWeight.w500,
+                                    color: Color(0xff212121).withOpacity(0.9),
+                                  ),
                                 ),
-                              ),
+                                SizedBox(
+                                  width: 8.0,
+                                ),
+                                Icon(
+                                  Ionicons.ios_arrow_round_forward,
+                                  color: Color(0xff212121).withOpacity(0.9),
+                                ),
+                              ],
+                            ),
+                          ),
+                          SizedBox(
+                            height: 32.0,
+                          ),
+                        ],
                       ),
-              ),
-            ],
-          ),
-        ),
-      ),
+                    );
+                  },
+                ),
+        );
+      },
     );
   }
 }
