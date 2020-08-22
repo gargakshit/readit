@@ -71,7 +71,7 @@ abstract class ArticleStoreBase with Store {
               .length ==
           0) {
         final res = await get(
-          "https://us-central1-technews-251304.cloudfunctions.net/article-parser?url=$text",
+          "https://readit.paperplane.ml/api/description?url=$text",
         );
 
         if (res.statusCode == 200) {
