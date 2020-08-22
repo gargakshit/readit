@@ -71,14 +71,14 @@ abstract class ArticleStoreBase with Store {
               .length ==
           0) {
         final res = await get(
-          "https://readit.paperplane.ml/api/description?url=$text",
+          "https://readit.paperplane.ml/api/extract?url=$text",
         );
 
         if (res.statusCode == 200) {
           var body = jsonDecode(res.body);
           if (body['error'] == 0) {
             final res = await get(
-              "https://v1.nocodeapi.com/akshitgarg/link_preview/jYIYKEPeLtLUVVxU?url=$text",
+              "https://readit.paperplane.ml/api/description?url=$text",
             );
 
             if (res.statusCode == 200) {
